@@ -48,6 +48,18 @@
       <div id="publish-status" aria-live="polite"></div>
       <div id="publish-result"></div>
 
+      <section class="library-panel" aria-labelledby="recent-heading">
+        <div class="library-heading">
+          <div>
+            <div class="section-kicker">Library</div>
+            <h2 id="recent-heading">Recent uploads</h2>
+          </div>
+          <span id="publication-count" class="publication-count"></span>
+        </div>
+        <div id="publications-status" class="small" aria-live="polite"></div>
+        <div id="publications-list" class="publications-list"></div>
+      </section>
+
       <section id="access-panel" class="access-panel" hidden>
         <div class="section-heading">Access</div>
         <p>Add an email to let that Google account publish. Revoking access does not remove pages already published.</p>
@@ -72,6 +84,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.3/dist/umd/supabase.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="home.js?v=7"></script>
+  <script src="home.js?v=8"></script>
 </body>
 </html>
