@@ -7,8 +7,6 @@
   const GOOGLE_CLIENT_ID = '67725416110-0vm746r7aa5h837tppqo494gnpa76adr.apps.googleusercontent.com';
   const SESSION_KEY = 'logseq-supabase-session-v1';
 
-  // Remove credentials left by the retired browser-PAT publisher and by the old
-  // default Supabase localStorage session. Active auth now lives only in this tab.
   localStorage.removeItem('logseq-publish-token-lntk-logseq-v3');
   localStorage.removeItem('logseq-publish-token-v2');
   localStorage.removeItem('sb-ufwytuotzxujrvhfzcoh-auth-token');
@@ -37,6 +35,9 @@
   const fileInput = document.getElementById('file-input');
   const publishStatus = document.getElementById('publish-status');
   const publishResult = document.getElementById('publish-result');
+  const publicationsList = document.getElementById('publications-list');
+  const publicationsStatus = document.getElementById('publications-status');
+  const publicationCount = document.getElementById('publication-count');
   const dropOverlay = document.getElementById('drop-overlay');
   const accessPanel = document.getElementById('access-panel');
   const accessEmail = document.getElementById('access-email');
@@ -75,6 +76,58 @@
     }[ch]));
   }
 
+  function initials(value) {
+    const parts = String(value || '?').trim().split(/\s+/).filter(Boolean);
+    return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?';
+  }
+
+  function formatUploadDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(date);
+  }
+
+  function safePublicationUrl(value) {
+    try {
+      const url = new URL(String(value || ''), location.origin);
+      if (url.origin !== location.origin || !url.pathname.startsWith('/logseq/')) return '#';
+      return url.href;
+    } catch (_) {
+      return '#';
+    }
+  }
+
+  function publicationCard(item) {
+    const filename = String(item?.filename || 'Untitled.md');
+    const uploaderName = String(item?.uploader_name || item?.uploader_email || 'Unknown uploader');
+    const uploaderEmail = String(item?.uploader_email || '');
+    const avatarUrl = String(item?.uploader_avatar_url || '');
+    const url = safePublicationUrl(item?.published_url);
+    const date = formatUploadDate(item?.created_at);
+    const avatar = avatarUrl
+      ? `<img class="uploader-avatar" src="${escapeHtml(avatarUrl)}" alt="" referrerpolicy="no-referrer" loading="lazy" />`
+      : `<span class="uploader-avatar uploader-avatar-fallback" aria-hidden="true">${escapeHtml(initials(uploaderName))}</span>`;
+
+    return `
+      <a class="publication-card" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+        <div class="publication-main">
+          <div class="publication-title">${escapeHtml(filename)}</div>
+          <div class="publication-date">${escapeHtml(date)}</div>
+        </div>
+        <div class="publication-uploader">
+          ${avatar}
+          <div class="uploader-text">
+            <span class="uploader-name">${escapeHtml(uploaderName)}</span>
+            <span class="uploader-email">${escapeHtml(uploaderEmail)}</span>
+          </div>
+        </div>
+        <span class="publication-open" aria-hidden="true">↗</span>
+      </a>`;
+  }
+
   async function makeNoncePair() {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     const raw = btoa(String.fromCharCode(...bytes));
@@ -110,9 +163,28 @@
     return data;
   }
 
+  async function loadPublications() {
+    publicationsList.innerHTML = '';
+    publicationCount.textContent = '';
+    publicationsStatus.textContent = 'Loading uploads…';
+
+    try {
+      const result = await api({ action: 'list_publications' });
+      const items = Array.isArray(result.publications) ? result.publications : [];
+      publicationCount.textContent = items.length ? String(items.length) : '';
+      publicationsStatus.textContent = items.length ? '' : 'No uploads yet.';
+      publicationsList.innerHTML = items.map(publicationCard).join('');
+    } catch (_) {
+      publicationsStatus.textContent = 'Could not load uploads.';
+    }
+  }
+
   async function refreshUi(session) {
     authorized = false;
     publishResult.innerHTML = '';
+    publicationsList.innerHTML = '';
+    publicationCount.textContent = '';
+    publicationsStatus.textContent = '';
     setPublishStatus('');
     setAccessStatus('');
 
@@ -128,6 +200,7 @@
       accountRole.textContent = me.role === 'owner' ? 'Owner' : 'Uploader';
       accessPanel.hidden = me.role !== 'owner';
       showOnly(workspace);
+      await loadPublications();
     } catch (error) {
       if (error.status === 403) {
         deniedEmail.textContent = session.user?.email || 'this account';
@@ -243,6 +316,7 @@
         await navigator.clipboard.writeText(result.url);
         event.currentTarget.textContent = 'Copied';
       });
+      await loadPublications();
     } catch (error) {
       setPublishStatus(String(error.message || error));
       if (error.status === 401) await refreshUi(null);
