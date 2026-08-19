@@ -29,11 +29,7 @@
   let pendingFile = null;
 
   if (window.marked && window.markedKatex) {
-    marked.use(markedKatex({
-      throwOnError: false,
-      nonStandard: true,
-      strict: false
-    }));
+    marked.use(markedKatex({ throwOnError: false, nonStandard: true, strict: false }));
   }
 
   function getToken() {
@@ -74,6 +70,7 @@
   }
 
   async function renderMarkdown(raw) {
+    if (!target) return;
     const markdown = normalizeLogseq(raw);
     if (!window.marked) throw new Error('Markdown renderer failed to load.');
     if (!window.markedKatex) throw new Error('LaTeX renderer failed to load.');
@@ -89,18 +86,15 @@
   }
 
   async function loadPage() {
+    if (isRootPage()) return;
     const slug = currentSlug();
-    let source;
-
-    if (slug) source = `${BASE}published/${slug}.md`;
-    else if (isRootPage()) source = `${BASE}page.md`;
-    else {
-      target.innerHTML = '<div class="error"><strong>Page not found.</strong></div>';
+    if (!slug || !target) {
+      if (target) target.innerHTML = '<div class="error"><strong>Page not found.</strong></div>';
       return;
     }
 
     try {
-      const response = await fetch(`${source}?v=${Date.now()}`, { cache: 'no-store' });
+      const response = await fetch(`${BASE}published/${slug}.md?v=${Date.now()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`Could not load note (${response.status})`);
       await renderMarkdown(await response.text());
     } catch (error) {
@@ -113,27 +107,30 @@
   }
 
   function showReady() {
-    if (!publisher) return;
+    if (!publisher || !readyPanel || !setupPanel) return;
     publisher.hidden = false;
-    publisher.classList.remove('setup');
     readyPanel.hidden = false;
     setupPanel.hidden = true;
-    settingsButton.hidden = !getToken();
+    if (settingsButton) settingsButton.hidden = !getToken();
   }
 
   function showSetup(message = '') {
-    if (!publisher) return;
+    if (!publisher || !readyPanel || !setupPanel) return;
     publisher.hidden = false;
-    publisher.classList.add('setup');
     readyPanel.hidden = true;
     setupPanel.hidden = false;
-    setupStatus.textContent = message;
-    tokenInput.value = '';
-    tokenInput.focus();
+    if (setupStatus) setupStatus.textContent = message;
+    if (tokenInput) {
+      tokenInput.value = '';
+      setTimeout(() => tokenInput.focus(), 0);
+    }
   }
 
   function configurePublisherUi() {
-    if (!isRootPage() || !publisher) return;
+    if (!isRootPage() || !publisher) {
+      if (publisher) publisher.hidden = true;
+      return;
+    }
     if (editRequested && !getToken()) showSetup();
     else showReady();
   }
@@ -141,13 +138,12 @@
   async function verifyToken(token) {
     const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
       headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
         'X-GitHub-Api-Version': '2022-11-28'
       }
     });
     if (!response.ok) throw new Error(`GitHub rejected the token (${response.status})`);
-    return true;
   }
 
   function utf8ToBase64(text) {
@@ -164,8 +160,8 @@
     const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`, {
       method: 'PUT',
       headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
         'X-GitHub-Api-Version': '2022-11-28'
       },
@@ -201,13 +197,12 @@
     let history = [];
     try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) {}
     history.unshift(item);
-    history = history.slice(0, 50);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
   }
 
   async function publishFile(file) {
-    if (!file || (!file.name.toLowerCase().endsWith('.md') && file.type && file.type !== 'text/markdown' && file.type !== 'text/plain')) {
-      publishStatus.textContent = 'Choose a Markdown (.md) file.';
+    if (!file || !file.name.toLowerCase().endsWith('.md')) {
+      if (publishStatus) publishStatus.textContent = 'Choose a Markdown (.md) file.';
       return;
     }
 
@@ -218,25 +213,28 @@
       return;
     }
 
-    publishResult.innerHTML = '';
-    publishStatus.textContent = `Publishing ${file.name}…`;
+    if (publishResult) publishResult.innerHTML = '';
+    if (publishStatus) publishStatus.textContent = `Reading ${file.name}…`;
     const markdown = await file.text();
     const shell = await getShell();
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       const id = randomId();
       try {
+        if (publishStatus) publishStatus.textContent = 'Publishing…';
         await githubCreateFile(`published/${id}.md`, markdown, `Publish ${file.name} as ${id}`, token);
         await githubCreateFile(`${id}/index.html`, shell, `Add published route ${id}`, token);
 
         const url = `${location.origin}${BASE}${id}/`;
         saveHistory({ id, name: file.name, url, createdAt: new Date().toISOString() });
-        publishStatus.textContent = 'Published';
-        publishResult.innerHTML = `<a id="new-link" href="${url}">${url}</a><button id="copy-link" type="button">Copy link</button>`;
-        document.getElementById('copy-link').addEventListener('click', async () => {
-          await navigator.clipboard.writeText(url);
-          document.getElementById('copy-link').textContent = 'Copied';
-        });
+        if (publishStatus) publishStatus.textContent = 'Published. The new page may take a few seconds to become available.';
+        if (publishResult) {
+          publishResult.innerHTML = `<div class="result-label">Share link</div><div class="result-row"><a id="new-link" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a><button id="copy-link" type="button">Copy link</button></div>`;
+          document.getElementById('copy-link')?.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(url);
+            document.getElementById('copy-link').textContent = 'Copied';
+          });
+        }
         return;
       } catch (error) {
         if (error.code === 'PATH_COLLISION') continue;
@@ -244,75 +242,73 @@
           clearToken();
           showSetup('Token expired or lacks Contents: read and write permission.');
         }
-        publishStatus.textContent = String(error.message || error);
+        if (publishStatus) publishStatus.textContent = String(error.message || error);
         return;
       }
     }
-    publishStatus.textContent = 'Could not generate a unique page ID. Try again.';
+    if (publishStatus) publishStatus.textContent = 'Could not generate a unique page ID; try again.';
   }
 
-  saveTokenButton?.addEventListener('click', async () => {
-    const token = tokenInput.value.trim();
-    if (!token) return;
-    saveTokenButton.disabled = true;
-    setupStatus.textContent = 'Checking…';
-    try {
-      await verifyToken(token);
-      setToken(token);
-      setupStatus.textContent = '';
-      showReady();
-      if (pendingFile) {
-        const file = pendingFile;
-        pendingFile = null;
-        await publishFile(file);
+  if (isRootPage()) {
+    saveTokenButton?.addEventListener('click', async () => {
+      const token = tokenInput?.value.trim() || '';
+      if (!token) return;
+      saveTokenButton.disabled = true;
+      if (setupStatus) setupStatus.textContent = 'Checking token…';
+      try {
+        await verifyToken(token);
+        setToken(token);
+        if (setupStatus) setupStatus.textContent = '';
+        showReady();
+        if (pendingFile) {
+          const file = pendingFile;
+          pendingFile = null;
+          await publishFile(file);
+        }
+      } catch (error) {
+        if (setupStatus) setupStatus.textContent = String(error.message || error);
+      } finally {
+        saveTokenButton.disabled = false;
       }
-    } catch (error) {
-      setupStatus.textContent = String(error.message || error);
-    } finally {
-      saveTokenButton.disabled = false;
-    }
-  });
+    });
 
-  cancelSetupButton?.addEventListener('click', () => {
-    pendingFile = null;
-    showReady();
-  });
+    cancelSetupButton?.addEventListener('click', () => {
+      pendingFile = null;
+      if (setupStatus) setupStatus.textContent = '';
+      showReady();
+    });
 
-  settingsButton?.addEventListener('click', () => {
-    clearToken();
-    showSetup('GitHub connection removed from this browser.');
-  });
+    settingsButton?.addEventListener('click', () => {
+      clearToken();
+      showSetup('Token removed from this browser. Paste a token to connect again.');
+    });
 
-  chooseFileButton?.addEventListener('click', () => fileInput.click());
-  fileInput?.addEventListener('change', () => {
-    if (fileInput.files?.[0]) publishFile(fileInput.files[0]);
-    fileInput.value = '';
-  });
+    chooseFileButton?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', () => {
+      if (fileInput.files?.[0]) publishFile(fileInput.files[0]);
+      fileInput.value = '';
+    });
 
-  let dragDepth = 0;
-  window.addEventListener('dragenter', event => {
-    if (!isRootPage()) return;
-    event.preventDefault();
-    dragDepth += 1;
-    if (dropOverlay) dropOverlay.hidden = false;
-  });
-  window.addEventListener('dragover', event => {
-    if (isRootPage()) event.preventDefault();
-  });
-  window.addEventListener('dragleave', event => {
-    if (!isRootPage()) return;
-    event.preventDefault();
-    dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0 && dropOverlay) dropOverlay.hidden = true;
-  });
-  window.addEventListener('drop', event => {
-    if (!isRootPage()) return;
-    event.preventDefault();
-    dragDepth = 0;
-    if (dropOverlay) dropOverlay.hidden = true;
-    const file = event.dataTransfer?.files?.[0];
-    if (file) publishFile(file);
-  });
+    let dragDepth = 0;
+    window.addEventListener('dragenter', event => {
+      event.preventDefault();
+      dragDepth += 1;
+      if (dropOverlay) dropOverlay.hidden = false;
+    });
+    window.addEventListener('dragover', event => event.preventDefault());
+    window.addEventListener('dragleave', event => {
+      event.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0 && dropOverlay) dropOverlay.hidden = true;
+    });
+    window.addEventListener('drop', event => {
+      event.preventDefault();
+      dragDepth = 0;
+      if (dropOverlay) dropOverlay.hidden = true;
+      const file = event.dataTransfer?.files?.[0];
+      if (file) publishFile(file);
+    });
+  }
 
   configurePublisherUi();
   loadPage();
