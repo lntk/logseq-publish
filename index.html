@@ -4,435 +4,46 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data: https://cdn.jsdelivr.net; img-src 'self' data: https:; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'" />
   <title>Published Logseq Page</title>
-  <style>
-    :root {
-      --bg: #ffffff;
-      --fg: #1f2328;
-      --muted: #59636e;
-      --border: #d0d7de;
-      --link: #0969da;
-      --code-bg: #f6f8fa;
-      --quote: #6e7781;
-      --panel: rgba(255,255,255,.96);
-      --accent: #1f883d;
-      --danger: #cf222e;
-      --max: 860px;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0d1117;
-        --fg: #e6edf3;
-        --muted: #8d96a0;
-        --border: #30363d;
-        --link: #58a6ff;
-        --code-bg: #161b22;
-        --quote: #8b949e;
-        --panel: rgba(13,17,23,.96);
-        --accent: #3fb950;
-        --danger: #f85149;
-      }
-    }
-    * { box-sizing: border-box; }
-    html { background: var(--bg); color: var(--fg); }
-    body {
-      margin: 0;
-      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--fg);
-    }
-    main { max-width: var(--max); margin: 0 auto; padding: 56px 24px 96px; }
-    article { overflow-wrap: anywhere; }
-    h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.7em 0 .65em; }
-    h1 { font-size: 2.15rem; margin-top: 0; padding-bottom: .3em; border-bottom: 1px solid var(--border); }
-    h2 { font-size: 1.55rem; padding-bottom: .25em; border-bottom: 1px solid var(--border); }
-    h3 { font-size: 1.25rem; }
-    p, ul, ol, blockquote, pre, table { margin: 0 0 1rem; }
-    ul, ol { padding-left: 1.7rem; }
-    li + li { margin-top: .2rem; }
-    a { color: var(--link); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      background: var(--code-bg);
-      border-radius: 5px;
-      padding: .15em .35em;
-      font-size: .9em;
-    }
-    pre { background: var(--code-bg); padding: 16px; border-radius: 8px; overflow: auto; }
-    pre code { padding: 0; background: transparent; }
-    blockquote { margin-left: 0; padding-left: 1rem; color: var(--quote); border-left: 4px solid var(--border); }
-    hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
-    table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
-    th, td { border: 1px solid var(--border); padding: 6px 12px; }
-    img { max-width: 100%; height: auto; border-radius: 6px; }
-    input[type="checkbox"] { margin-right: .45rem; }
-    .status { color: var(--muted); }
-    .error { padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
-
-    #publish-button {
-      display: none;
-      position: fixed;
-      right: 18px;
-      bottom: 18px;
-      z-index: 20;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: var(--panel);
-      color: var(--fg);
-      padding: 9px 14px;
-      font: inherit;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 4px 18px rgba(0,0,0,.12);
-      backdrop-filter: blur(10px);
-    }
-    body.editor #publish-button { display: block; }
-    #publish-button:hover { border-color: var(--muted); }
-
-    #publish-status {
-      display: none;
-      position: fixed;
-      right: 18px;
-      bottom: 66px;
-      z-index: 20;
-      max-width: min(420px, calc(100vw - 36px));
-      background: var(--panel);
-      color: var(--fg);
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      padding: 8px 12px;
-      box-shadow: 0 4px 18px rgba(0,0,0,.12);
-      font-size: 14px;
-    }
-    #publish-status.show { display: block; }
-    #publish-status.bad { color: var(--danger); }
-
-    #drop-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 100;
-      background: color-mix(in srgb, var(--bg) 88%, transparent);
-      border: 4px dashed var(--accent);
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      pointer-events: none;
-    }
-    #drop-overlay.show { display: flex; }
-    #drop-overlay > div {
-      padding: 30px 38px;
-      border-radius: 16px;
-      background: var(--panel);
-      box-shadow: 0 12px 40px rgba(0,0,0,.18);
-      font-size: 21px;
-      font-weight: 700;
-    }
-    #drop-overlay small { display: block; margin-top: 5px; color: var(--muted); font-size: 14px; font-weight: 400; }
-
-    dialog {
-      width: min(560px, calc(100vw - 28px));
-      color: var(--fg);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 0;
-      box-shadow: 0 18px 55px rgba(0,0,0,.28);
-    }
-    dialog::backdrop { background: rgba(0,0,0,.45); }
-    .modal-body { padding: 22px; }
-    .modal-body h2 { margin: 0 0 10px; border: 0; padding: 0; }
-    .modal-body p { margin-bottom: 12px; }
-    .modal-body label { display: block; font-weight: 600; margin-bottom: 6px; }
-    .modal-body input[type="password"] {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      padding: 10px 11px;
-      font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      color: var(--fg);
-      background: var(--code-bg);
-    }
-    .remember { margin-top: 11px; color: var(--muted); font-size: 14px; }
-    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
-    button.action {
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      background: var(--code-bg);
-      color: var(--fg);
-      padding: 8px 12px;
-      font: inherit;
-      cursor: pointer;
-    }
-    button.action.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
-    .token-error { color: var(--danger); min-height: 1.4em; font-size: 14px; margin-top: 8px; }
-    .fineprint { color: var(--muted); font-size: 13px; }
-  </style>
+  <link rel="stylesheet" href="/logseq-publish/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.css" integrity="sha384-1vdNCNel6Tx/NQa8IR1mGOGKsbGreCkOPfbtPPnUURJ5Tu2PRVfQ/7KLZC+Pi1p1" crossorigin="anonymous" />
 </head>
 <body>
   <main>
     <article id="content"><p class="status">Loading…</p></article>
   </main>
 
-  <button id="publish-button" type="button" title="Publish a Markdown file">Publish .md</button>
-  <input id="file-input" type="file" accept=".md,text/markdown,text/plain" hidden />
-  <div id="publish-status" role="status"></div>
-  <div id="drop-overlay"><div>Drop Markdown to publish<small>It will replace the current public page.</small></div></div>
-
-  <dialog id="auth-dialog">
-    <div class="modal-body">
-      <h2>Connect this browser once</h2>
-      <p>Create a fine-grained GitHub token for <strong>lntk/logseq-publish</strong> with only <strong>Contents: Read and write</strong>, then paste it below.</p>
-      <p><a id="token-link" href="https://github.com/settings/personal-access-tokens/new?name=Logseq%20Publisher&description=Publish%20page.md%20to%20lntk%2Flogseq-publish&target_name=lntk&expires_in=90&contents=write" target="_blank" rel="noopener noreferrer">Create pre-filled token on GitHub ↗</a><br><span class="fineprint">On GitHub, choose <strong>Only select repositories → logseq-publish</strong> before generating it.</span></p>
-      <label for="token-input">Token</label>
-      <input id="token-input" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" />
-      <label class="remember"><input id="remember-token" type="checkbox" checked /> Remember on this browser</label>
-      <div class="token-error" id="token-error"></div>
-      <div class="modal-actions">
-        <button class="action" id="cancel-auth" type="button">Cancel</button>
-        <button class="action primary" id="save-auth" type="button">Connect & publish</button>
+  <aside id="publisher" hidden>
+    <div id="publisher-ready" hidden>
+      <div class="publisher-row">
+        <button class="primary" id="choose-file">Publish .md</button>
+        <button id="publisher-settings" title="Publisher settings">Settings</button>
+        <input id="file-input" type="file" accept=".md,text/markdown,text/plain" hidden />
       </div>
-      <p class="fineprint">The token is stored only in this browser if “Remember” is checked. Keep it repository-scoped; treat it like a password.</p>
+      <div id="publish-status">Drop a Markdown file anywhere on this page.</div>
+      <div id="publish-result"></div>
     </div>
-  </dialog>
+    <div id="publisher-setup" hidden>
+      <div><strong>Enable publishing in this browser</strong></div>
+      <p class="small">Use a fine-grained GitHub token restricted to <code>lntk/logseq-publish</code> with <strong>Contents: read and write</strong>. It is stored only in this browser.</p>
+      <div class="publisher-row">
+        <a class="button-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create token</a>
+      </div>
+      <div class="publisher-row">
+        <input id="token-input" type="password" autocomplete="off" placeholder="github_pat_…" />
+        <button class="primary" id="save-token">Save</button>
+      </div>
+      <div id="setup-status" class="small"></div>
+    </div>
+  </aside>
+
+  <div id="drop-overlay" hidden>Drop .md to publish</div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
-  <script>
-    const REPO = 'lntk/logseq-publish';
-    const BRANCH = 'main';
-    const FILE_PATH = 'page.md';
-    const TOKEN_KEY = 'logseq-publish-token-v1';
-    const target = document.getElementById('content');
-    const publishButton = document.getElementById('publish-button');
-    const fileInput = document.getElementById('file-input');
-    const publishStatus = document.getElementById('publish-status');
-    const dropOverlay = document.getElementById('drop-overlay');
-    const authDialog = document.getElementById('auth-dialog');
-    const tokenInput = document.getElementById('token-input');
-    const rememberToken = document.getElementById('remember-token');
-    const tokenError = document.getElementById('token-error');
-    let pendingFile = null;
-    let dragDepth = 0;
-
-    function normalizeLogseq(markdown) {
-      return markdown
-        .replace(/\[\[([^\]]+)\]\]/g, '$1')
-        .replace(/^([ \t]*)- TODO /gm, '$1- [ ] ')
-        .replace(/^([ \t]*)- DOING /gm, '$1- [ ] ')
-        .replace(/^([ \t]*)- DONE /gm, '$1- [x] ');
-    }
-
-    function renderMarkdown(raw) {
-      const markdown = normalizeLogseq(raw);
-      const rendered = marked.parse(markdown, { gfm: true, breaks: false });
-      target.innerHTML = DOMPurify.sanitize(rendered);
-      const firstHeading = raw.match(/^#\s+(.+)$/m);
-      if (firstHeading) document.title = firstHeading[1].replace(/[*_`]/g, '').trim();
-    }
-
-    async function renderPublished() {
-      try {
-        const response = await fetch(`page.md?v=${Date.now()}`, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Could not load page.md (${response.status})`);
-        renderMarkdown(await response.text());
-      } catch (error) {
-        target.innerHTML = `<div class="error"><strong>Nothing published yet.</strong><p>Publish a Markdown file to begin.</p><p class="status">${escapeHtml(String(error.message || error))}</p></div>`;
-      }
-    }
-
-    function escapeHtml(s) {
-      return s.replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-    }
-
-    function getToken() {
-      return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || '';
-    }
-
-    function setToken(token, remember) {
-      sessionStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-      (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token);
-      document.body.classList.add('editor');
-    }
-
-    function clearToken() {
-      sessionStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(TOKEN_KEY);
-    }
-
-    function setStatus(message, bad = false, persistent = false) {
-      publishStatus.textContent = message;
-      publishStatus.classList.toggle('bad', bad);
-      publishStatus.classList.add('show');
-      clearTimeout(setStatus.timer);
-      if (!persistent) setStatus.timer = setTimeout(() => publishStatus.classList.remove('show'), 5000);
-    }
-
-    function toBase64Utf8(text) {
-      const bytes = new TextEncoder().encode(text);
-      let binary = '';
-      const chunk = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      return btoa(binary);
-    }
-
-    async function github(path, options = {}, token = getToken()) {
-      const response = await fetch(`https://api.github.com/repos/${REPO}${path}`, {
-        ...options,
-        headers: {
-          'Accept': 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          ...(options.headers || {})
-        }
-      });
-      let body = null;
-      try { body = await response.json(); } catch (_) {}
-      if (!response.ok) {
-        const err = new Error(body?.message || `GitHub API returned ${response.status}`);
-        err.status = response.status;
-        throw err;
-      }
-      return body;
-    }
-
-    async function publishText(raw, token = getToken(), retry = true) {
-      const current = await github(`/contents/${FILE_PATH}?ref=${encodeURIComponent(BRANCH)}`, {}, token);
-      try {
-        return await github(`/contents/${FILE_PATH}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: `Publish ${pendingFile?.name || 'Logseq page'}`,
-            content: toBase64Utf8(raw),
-            sha: current.sha,
-            branch: BRANCH
-          })
-        }, token);
-      } catch (error) {
-        if (retry && error.status === 409) return publishText(raw, token, false);
-        throw error;
-      }
-    }
-
-    async function handleFile(file) {
-      if (!file) return;
-      if (!/\.md$/i.test(file.name)) {
-        setStatus('Please drop a .md file.', true);
-        return;
-      }
-      pendingFile = file;
-      const raw = await file.text();
-      renderMarkdown(raw);
-      pendingFile.raw = raw;
-
-      if (!getToken()) {
-        tokenError.textContent = '';
-        tokenInput.value = '';
-        authDialog.showModal();
-        tokenInput.focus();
-        return;
-      }
-      await publishPending();
-    }
-
-    async function publishPending(tokenOverride = '') {
-      if (!pendingFile?.raw) return;
-      const token = tokenOverride || getToken();
-      setStatus('Publishing to GitHub…', false, true);
-      try {
-        await publishText(pendingFile.raw, token);
-        setStatus('Published ✓  GitHub Pages is updating…');
-        pendingFile = null;
-      } catch (error) {
-        if (error.status === 401 || error.status === 403 || error.status === 404) {
-          clearToken();
-          tokenError.textContent = `GitHub rejected this token: ${error.message}`;
-          tokenInput.value = '';
-          authDialog.showModal();
-          tokenInput.focus();
-          setStatus('GitHub authorization needs attention.', true);
-        } else {
-          setStatus(`Publish failed: ${error.message}`, true, true);
-        }
-      }
-    }
-
-    publishButton.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', () => {
-      handleFile(fileInput.files?.[0]);
-      fileInput.value = '';
-    });
-
-    document.addEventListener('dragenter', event => {
-      event.preventDefault();
-      dragDepth += 1;
-      if (document.body.classList.contains('editor')) dropOverlay.classList.add('show');
-    });
-    document.addEventListener('dragover', event => {
-      event.preventDefault();
-      if (document.body.classList.contains('editor')) dropOverlay.classList.add('show');
-    });
-    document.addEventListener('dragleave', event => {
-      event.preventDefault();
-      dragDepth = Math.max(0, dragDepth - 1);
-      if (!dragDepth) dropOverlay.classList.remove('show');
-    });
-    document.addEventListener('drop', event => {
-      event.preventDefault();
-      dragDepth = 0;
-      dropOverlay.classList.remove('show');
-      if (!document.body.classList.contains('editor')) return;
-      handleFile(event.dataTransfer?.files?.[0]);
-    });
-
-    document.getElementById('cancel-auth').addEventListener('click', () => {
-      authDialog.close();
-      pendingFile = null;
-    });
-
-    document.getElementById('save-auth').addEventListener('click', async () => {
-      const token = tokenInput.value.trim();
-      if (!token) {
-        tokenError.textContent = 'Paste the token first.';
-        return;
-      }
-      tokenError.textContent = 'Checking token…';
-      try {
-        await github(`/contents/${FILE_PATH}?ref=${encodeURIComponent(BRANCH)}`, {}, token);
-        setToken(token, rememberToken.checked);
-        tokenError.textContent = '';
-        authDialog.close();
-        if (pendingFile) await publishPending(token);
-        else setStatus('Connected ✓  Drop a .md file anywhere.');
-      } catch (error) {
-        tokenError.textContent = `Could not access ${REPO}: ${error.message}`;
-      }
-    });
-
-    tokenInput.addEventListener('keydown', event => {
-      if (event.key === 'Enter') document.getElementById('save-auth').click();
-    });
-
-    const editRequested = new URLSearchParams(location.search).has('edit');
-    if (editRequested || getToken()) document.body.classList.add('editor');
-    if (editRequested && !getToken()) {
-      setTimeout(() => {
-        if (!authDialog.open) {
-          pendingFile = null;
-          tokenError.textContent = '';
-          authDialog.showModal();
-          tokenInput.focus();
-        }
-      }, 250);
-    }
-
-    renderPublished();
-  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/katex.min.js" integrity="sha384-ycJ6GAwiS15LoUPipwJOrWTvkUHl/YqELValBwI5I4awP1EeEQJYarj+w85ntcz7" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.18.1/dist/contrib/auto-render.min.js" integrity="sha384-bjyGPfbij8/NDKJhSGZNP/khQVgtHUE5exjm4Ydllo42FwIgYsdLO2lXGmRBf5Mz" crossorigin="anonymous"></script>
+  <script defer src="/logseq-publish/app.js"></script>
 </body>
 </html>
