@@ -5,12 +5,21 @@
   const SUPABASE_KEY = 'sb_publishable_k2j-Uv9H4K397gWi_2rzSw_PCnUQYxz';
   const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/logseq-publish`;
   const GOOGLE_CLIENT_ID = '67725416110-0vm746r7aa5h837tppqo494gnpa76adr.apps.googleusercontent.com';
+  const SESSION_KEY = 'logseq-supabase-session-v1';
+
+  // Remove credentials left by the retired browser-PAT publisher and by the old
+  // default Supabase localStorage session. Active auth now lives only in this tab.
+  localStorage.removeItem('logseq-publish-token-lntk-logseq-v3');
+  localStorage.removeItem('logseq-publish-token-v2');
+  localStorage.removeItem('sb-ufwytuotzxujrvhfzcoh-auth-token');
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
+      storage: window.sessionStorage,
+      storageKey: SESSION_KEY,
     },
   });
 
