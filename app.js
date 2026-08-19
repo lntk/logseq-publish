@@ -2,11 +2,12 @@
   'use strict';
 
   const OWNER = 'lntk';
-  const REPO = 'logseq-publish';
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const REPO = pathParts[0] || 'logseq';
   const BRANCH = 'main';
-  const BASE = '/logseq-publish/';
-  const TOKEN_KEY = 'logseq-publish-token-v2';
-  const HISTORY_KEY = 'logseq-publish-history-v2';
+  const BASE = `/${REPO}/`;
+  const TOKEN_KEY = `logseq-publish-token-${OWNER}-${REPO}-v3`;
+  const HISTORY_KEY = `logseq-publish-history-${OWNER}-${REPO}-v3`;
 
   const target = document.getElementById('content');
   const publisher = document.getElementById('publisher');
@@ -35,7 +36,7 @@
   }
 
   function getToken() {
-    return localStorage.getItem(TOKEN_KEY) || '';
+    return localStorage.getItem(TOKEN_KEY) || localStorage.getItem('logseq-publish-token-v2') || '';
   }
 
   function setToken(token) {
@@ -44,6 +45,7 @@
 
   function clearToken() {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('logseq-publish-token-v2');
   }
 
   function normalizeLogseq(markdown) {
@@ -78,7 +80,7 @@
     const rendered = marked.parse(markdown, { gfm: true, breaks: false });
     target.innerHTML = DOMPurify.sanitize(rendered, {
       ADD_ATTR: ['aria-hidden'],
-      USE_PROFILES: { html: true, mathMl: true, svg: true }
+      ADD_TAGS: ['annotation']
     });
 
     const firstHeading = raw.match(/^#\s+(.+)$/m);
@@ -109,11 +111,10 @@
     return value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  function showReady(message = 'Drop a Markdown file anywhere on this page.') {
+  function showReady() {
     publisher.hidden = false;
     readyPanel.hidden = false;
     setupPanel.hidden = true;
-    publishStatus.textContent = message;
   }
 
   function showSetup(message = '') {
@@ -126,12 +127,9 @@
   }
 
   function configurePublisherUi() {
-    if (!isRootPage() && !editRequested) {
-      publisher.hidden = true;
-      return;
-    }
+    publisher.hidden = false;
     if (getToken()) showReady();
-    else showSetup('First publish only: add your repository-scoped token, then future drops are automatic.');
+    else showSetup(editRequested ? '' : 'Connect GitHub once, then you can drop .md files directly here.');
   }
 
   async function verifyToken(token) {
@@ -165,11 +163,7 @@
         'Content-Type': 'application/json',
         'X-GitHub-Api-Version': '2022-11-28'
       },
-      body: JSON.stringify({
-        message,
-        content: utf8ToBase64(content),
-        branch: BRANCH
-      })
+      body: JSON.stringify({ message, content: utf8ToBase64(content), branch: BRANCH })
     });
 
     if (response.status === 422) {
@@ -206,20 +200,20 @@
   }
 
   async function publishFile(file) {
-    if (!file || !file.name.toLowerCase().endsWith('.md')) {
-      showReady('Please drop a Markdown (.md) file.');
+    if (!file || (!file.name.toLowerCase().endsWith('.md') && file.type && file.type !== 'text/markdown' && file.type !== 'text/plain')) {
+      publishStatus.textContent = 'Please drop a Markdown (.md) file.';
       return;
     }
 
     const token = getToken();
     if (!token) {
       pendingFile = file;
-      showSetup(`Ready to publish ${file.name}. Add the token once, then this file will publish automatically.`);
+      showSetup(`Ready to publish ${file.name}. Connect GitHub once to continue.`);
       return;
     }
 
     publishResult.innerHTML = '';
-    showReady(`Reading ${file.name}…`);
+    publishStatus.textContent = `Reading ${file.name}…`;
     const markdown = await file.text();
     const shell = await getShell();
 
@@ -227,20 +221,9 @@
       const id = randomId();
       try {
         publishStatus.textContent = 'Uploading Markdown…';
-        await githubCreateFile(
-          `published/${id}.md`,
-          markdown,
-          `Publish ${file.name} as ${id}`,
-          token
-        );
-
+        await githubCreateFile(`published/${id}.md`, markdown, `Publish ${file.name} as ${id}`, token);
         publishStatus.textContent = 'Creating unlisted public link…';
-        await githubCreateFile(
-          `${id}/index.html`,
-          shell,
-          `Add published route ${id}`,
-          token
-        );
+        await githubCreateFile(`${id}/index.html`, shell, `Add published route ${id}`, token);
 
         const url = `${location.origin}${BASE}${id}/`;
         saveHistory({ id, name: file.name, url, createdAt: new Date().toISOString() });
@@ -255,9 +238,7 @@
         if (error.code === 'PATH_COLLISION') continue;
         if (/401|403/.test(String(error.message))) {
           clearToken();
-          pendingFile = file;
           showSetup('Token expired or lacks Contents: read and write permission.');
-          return;
         }
         publishStatus.textContent = String(error.message || error);
         return;
@@ -274,10 +255,13 @@
     try {
       await verifyToken(token);
       setToken(token);
-      const file = pendingFile;
-      pendingFile = null;
+      setupStatus.textContent = '';
       showReady();
-      if (file) await publishFile(file);
+      if (pendingFile) {
+        const file = pendingFile;
+        pendingFile = null;
+        await publishFile(file);
+      }
     } catch (error) {
       setupStatus.textContent = String(error.message || error);
     } finally {
@@ -299,7 +283,6 @@
   let dragDepth = 0;
   window.addEventListener('dragenter', event => {
     event.preventDefault();
-    if (!isRootPage() && !editRequested) return;
     dragDepth += 1;
     dropOverlay.hidden = false;
   });
@@ -313,7 +296,6 @@
     event.preventDefault();
     dragDepth = 0;
     dropOverlay.hidden = true;
-    if (!isRootPage() && !editRequested) return;
     const file = event.dataTransfer?.files?.[0];
     if (file) publishFile(file);
   });
