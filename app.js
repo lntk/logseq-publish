@@ -15,6 +15,7 @@
   const setupPanel = document.getElementById('publisher-setup');
   const tokenInput = document.getElementById('token-input');
   const saveTokenButton = document.getElementById('save-token');
+  const cancelSetupButton = document.getElementById('cancel-setup');
   const setupStatus = document.getElementById('setup-status');
   const chooseFileButton = document.getElementById('choose-file');
   const settingsButton = document.getElementById('publisher-settings');
@@ -112,13 +113,18 @@
   }
 
   function showReady() {
+    if (!publisher) return;
     publisher.hidden = false;
+    publisher.classList.remove('setup');
     readyPanel.hidden = false;
     setupPanel.hidden = true;
+    settingsButton.hidden = !getToken();
   }
 
   function showSetup(message = '') {
+    if (!publisher) return;
     publisher.hidden = false;
+    publisher.classList.add('setup');
     readyPanel.hidden = true;
     setupPanel.hidden = false;
     setupStatus.textContent = message;
@@ -127,9 +133,9 @@
   }
 
   function configurePublisherUi() {
-    publisher.hidden = false;
-    if (getToken()) showReady();
-    else showSetup(editRequested ? '' : 'Connect GitHub once, then you can drop .md files directly here.');
+    if (!isRootPage() || !publisher) return;
+    if (editRequested && !getToken()) showSetup();
+    else showReady();
   }
 
   async function verifyToken(token) {
@@ -201,7 +207,7 @@
 
   async function publishFile(file) {
     if (!file || (!file.name.toLowerCase().endsWith('.md') && file.type && file.type !== 'text/markdown' && file.type !== 'text/plain')) {
-      publishStatus.textContent = 'Please drop a Markdown (.md) file.';
+      publishStatus.textContent = 'Choose a Markdown (.md) file.';
       return;
     }
 
@@ -213,22 +219,20 @@
     }
 
     publishResult.innerHTML = '';
-    publishStatus.textContent = `Reading ${file.name}…`;
+    publishStatus.textContent = `Publishing ${file.name}…`;
     const markdown = await file.text();
     const shell = await getShell();
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       const id = randomId();
       try {
-        publishStatus.textContent = 'Uploading Markdown…';
         await githubCreateFile(`published/${id}.md`, markdown, `Publish ${file.name} as ${id}`, token);
-        publishStatus.textContent = 'Creating unlisted public link…';
         await githubCreateFile(`${id}/index.html`, shell, `Add published route ${id}`, token);
 
         const url = `${location.origin}${BASE}${id}/`;
         saveHistory({ id, name: file.name, url, createdAt: new Date().toISOString() });
-        publishStatus.textContent = 'Published. GitHub Pages may take a short moment to refresh.';
-        publishResult.innerHTML = `<a id="new-link" href="${url}">${url}</a> <button id="copy-link" type="button">Copy</button>`;
+        publishStatus.textContent = 'Published';
+        publishResult.innerHTML = `<a id="new-link" href="${url}">${url}</a><button id="copy-link" type="button">Copy link</button>`;
         document.getElementById('copy-link').addEventListener('click', async () => {
           await navigator.clipboard.writeText(url);
           document.getElementById('copy-link').textContent = 'Copied';
@@ -244,14 +248,14 @@
         return;
       }
     }
-    publishStatus.textContent = 'Could not generate a unique page ID; try again.';
+    publishStatus.textContent = 'Could not generate a unique page ID. Try again.';
   }
 
   saveTokenButton?.addEventListener('click', async () => {
     const token = tokenInput.value.trim();
     if (!token) return;
     saveTokenButton.disabled = true;
-    setupStatus.textContent = 'Checking token…';
+    setupStatus.textContent = 'Checking…';
     try {
       await verifyToken(token);
       setToken(token);
@@ -269,9 +273,14 @@
     }
   });
 
+  cancelSetupButton?.addEventListener('click', () => {
+    pendingFile = null;
+    showReady();
+  });
+
   settingsButton?.addEventListener('click', () => {
     clearToken();
-    showSetup('Token removed from this browser. Paste a token to enable publishing again.');
+    showSetup('GitHub connection removed from this browser.');
   });
 
   chooseFileButton?.addEventListener('click', () => fileInput.click());
@@ -282,20 +291,25 @@
 
   let dragDepth = 0;
   window.addEventListener('dragenter', event => {
+    if (!isRootPage()) return;
     event.preventDefault();
     dragDepth += 1;
-    dropOverlay.hidden = false;
+    if (dropOverlay) dropOverlay.hidden = false;
   });
-  window.addEventListener('dragover', event => event.preventDefault());
+  window.addEventListener('dragover', event => {
+    if (isRootPage()) event.preventDefault();
+  });
   window.addEventListener('dragleave', event => {
+    if (!isRootPage()) return;
     event.preventDefault();
     dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0) dropOverlay.hidden = true;
+    if (dragDepth === 0 && dropOverlay) dropOverlay.hidden = true;
   });
   window.addEventListener('drop', event => {
+    if (!isRootPage()) return;
     event.preventDefault();
     dragDepth = 0;
-    dropOverlay.hidden = true;
+    if (dropOverlay) dropOverlay.hidden = true;
     const file = event.dataTransfer?.files?.[0];
     if (file) publishFile(file);
   });
