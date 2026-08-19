@@ -36,6 +36,46 @@
     }[ch]));
   }
 
+  function enhanceCollapsibleBlocks() {
+    if (!target) return;
+
+    let index = 0;
+    target.querySelectorAll('li').forEach(li => {
+      const childrenList = Array.from(li.children).find(
+        child => child.tagName === 'UL' || child.tagName === 'OL'
+      );
+      if (!childrenList) return;
+
+      index += 1;
+      const id = `block-children-${index}`;
+      childrenList.id = id;
+      childrenList.classList.add('logseq-children');
+      li.classList.add('logseq-collapsible');
+
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'logseq-toggle';
+      toggle.setAttribute('aria-expanded', 'true');
+      toggle.setAttribute('aria-controls', id);
+      toggle.setAttribute('aria-label', 'Collapse block');
+      toggle.textContent = '▾';
+
+      toggle.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const expanded = toggle.getAttribute('aria-expanded') === 'true';
+        const nextExpanded = !expanded;
+        toggle.setAttribute('aria-expanded', String(nextExpanded));
+        toggle.setAttribute('aria-label', nextExpanded ? 'Collapse block' : 'Expand block');
+        toggle.textContent = nextExpanded ? '▾' : '▸';
+        childrenList.hidden = !nextExpanded;
+      });
+
+      li.insertBefore(toggle, li.firstChild);
+    });
+  }
+
   async function renderMarkdown(raw) {
     if (!target) return;
     if (!window.marked) throw new Error('Markdown renderer failed to load.');
@@ -47,6 +87,8 @@
       ADD_ATTR: ['aria-hidden'],
       ADD_TAGS: ['annotation']
     });
+
+    enhanceCollapsibleBlocks();
 
     const firstHeading = raw.match(/^#\s+(.+)$/m);
     if (firstHeading) document.title = firstHeading[1].replace(/[*_`]/g, '').trim();
