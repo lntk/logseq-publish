@@ -1,8 +1,8 @@
 (() => {
   'use strict';
 
-  const SUPABASE_URL = 'https://exwrvgddhucixbudcbqt.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_XERz4JtlJtzKUUBFXCJL3Q_zw5Sn5iG';
+  const SUPABASE_URL = 'https://ufwytuotzxujrvhfzcoh.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_k2j-Uv9H4K397gWi_2rzSw_PCnUQYxz';
   const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/logseq-publish`;
   const GOOGLE_CLIENT_ID = '67725416110-0vm746r7aa5h837tppqo494gnpa76adr.apps.googleusercontent.com';
 
