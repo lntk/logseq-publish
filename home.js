@@ -4,20 +4,21 @@
   const SUPABASE_URL = 'https://exwrvgddhucixbudcbqt.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_XERz4JtlJtzKUUBFXCJL3Q_zw5Sn5iG';
   const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/logseq-publish`;
-  const REDIRECT_URL = 'https://lntk.github.io/logseq/';
+  const GOOGLE_CLIENT_ID = '67725416110-0vm746r7aa5h837tppqo494gnpa76adr.apps.googleusercontent.com';
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: false,
     },
   });
 
   const signedOut = document.getElementById('signed-out');
   const denied = document.getElementById('denied');
   const workspace = document.getElementById('workspace');
-  const signInButton = document.getElementById('google-signin');
+  const googleSignIn = document.getElementById('google-signin');
+  const signInStatus = document.getElementById('signin-status');
   const deniedEmail = document.getElementById('denied-email');
   const deniedSignOut = document.getElementById('denied-signout');
   const accountEmail = document.getElementById('account-email');
@@ -34,7 +35,6 @@
   const revokeButton = document.getElementById('revoke-access');
   const accessStatus = document.getElementById('access-status');
 
-  let currentSession = null;
   let authorized = false;
 
   function showOnly(element) {
@@ -82,7 +82,6 @@
   }
 
   async function refreshUi(session) {
-    currentSession = session;
     authorized = false;
     publishResult.innerHTML = '';
     setPublishStatus('');
@@ -101,33 +100,56 @@
       accessPanel.hidden = me.role !== 'owner';
       showOnly(workspace);
     } catch (error) {
-      if (error.status === 403) {
-        deniedEmail.textContent = session.user?.email || 'this account';
-        showOnly(denied);
-        return;
-      }
       deniedEmail.textContent = session.user?.email || 'this account';
-      document.getElementById('denied-message').textContent = String(error.message || error);
+      if (error.status !== 403) {
+        document.getElementById('denied-message').textContent = String(error.message || error);
+      }
       showOnly(denied);
     }
   }
 
-  async function signIn() {
-    signInButton.disabled = true;
-    signInButton.textContent = 'Opening Google…';
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: REDIRECT_URL },
-    });
-    if (error) {
-      signInButton.disabled = false;
-      signInButton.textContent = 'Continue with Google';
-      document.getElementById('signin-status').textContent = error.message;
+  async function handleGoogleCredential(response) {
+    signInStatus.textContent = 'Signing in…';
+    try {
+      const { data, error } = await sb.auth.signInWithIdToken({
+        provider: 'google',
+        token: response.credential,
+      });
+      if (error) throw error;
+      signInStatus.textContent = '';
+      await refreshUi(data.session);
+    } catch (error) {
+      signInStatus.textContent = String(error.message || error);
     }
+  }
+
+  function initializeGoogleSignIn() {
+    if (!window.google?.accounts?.id) {
+      signInStatus.textContent = 'Google sign-in failed to load. Refresh the page and try again.';
+      return;
+    }
+
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+      auto_select: false,
+      use_fedcm_for_prompt: true,
+    });
+
+    window.google.accounts.id.renderButton(googleSignIn, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'rectangular',
+      logo_alignment: 'left',
+      width: 220,
+    });
   }
 
   async function signOut() {
     await sb.auth.signOut();
+    window.google?.accounts?.id?.disableAutoSelect();
     await refreshUi(null);
   }
 
@@ -192,7 +214,6 @@
     }
   }
 
-  signInButton?.addEventListener('click', signIn);
   signOutButton?.addEventListener('click', signOut);
   deniedSignOut?.addEventListener('click', signOut);
   chooseFileButton?.addEventListener('click', () => fileInput.click());
@@ -232,5 +253,6 @@
     setTimeout(() => refreshUi(session), 0);
   });
 
+  initializeGoogleSignIn();
   sb.auth.getSession().then(({ data }) => refreshUi(data.session));
 })();
