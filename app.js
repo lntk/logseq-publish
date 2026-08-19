@@ -36,8 +36,39 @@
     }[ch]));
   }
 
+  function installCollapsibleStyles() {
+    if (document.getElementById('logseq-tree-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'logseq-tree-styles';
+    style.textContent = `
+      article li.logseq-collapsible { position: relative; list-style: none; }
+      article .logseq-toggle {
+        position: absolute;
+        left: -1.42rem;
+        top: .30em;
+        width: 1.15rem;
+        height: 1.15rem;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--faint);
+        font: 600 .78rem/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        cursor: pointer;
+      }
+      article .logseq-toggle:hover { background: var(--surface-alt); color: var(--fg); }
+      article .logseq-toggle:focus-visible { outline: 1px solid var(--border-strong); outline-offset: 1px; }
+      article .logseq-children { margin-top: .08rem; margin-bottom: .18rem; }
+      article .logseq-children[hidden] { display: none; }
+    `;
+    document.head.appendChild(style);
+  }
+
   function enhanceCollapsibleBlocks() {
     if (!target) return;
+    installCollapsibleStyles();
 
     let index = 0;
     target.querySelectorAll('li').forEach(li => {
