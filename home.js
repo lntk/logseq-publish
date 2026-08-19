@@ -4,13 +4,13 @@
   const SUPABASE_URL = 'https://ufwytuotzxujrvhfzcoh.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_k2j-Uv9H4K397gWi_2rzSw_PCnUQYxz';
   const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/logseq-publish`;
-  const REDIRECT_URL = 'https://lntk.github.io/logseq/';
+  const GOOGLE_CLIENT_ID = '67725416110-0vm746r7aa5h837tppqo494gnpa76adr.apps.googleusercontent.com';
 
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: false,
     },
   });
 
@@ -18,6 +18,7 @@
   const denied = document.getElementById('denied');
   const workspace = document.getElementById('workspace');
   const signInButton = document.getElementById('google-signin');
+  const signInStatus = document.getElementById('signin-status');
   const deniedEmail = document.getElementById('denied-email');
   const deniedSignOut = document.getElementById('denied-signout');
   const accountEmail = document.getElementById('account-email');
@@ -34,13 +35,21 @@
   const revokeButton = document.getElementById('revoke-access');
   const accessStatus = document.getElementById('access-status');
 
-  let currentSession = null;
   let authorized = false;
+  let googleInitialized = false;
+  let signInResetTimer = null;
 
   function showOnly(element) {
     [signedOut, denied, workspace].forEach(el => {
       if (el) el.hidden = el !== element;
     });
+  }
+
+  function resetSignInButton() {
+    if (signInResetTimer) clearTimeout(signInResetTimer);
+    signInResetTimer = null;
+    signInButton.disabled = false;
+    signInButton.textContent = 'Continue with Google';
   }
 
   function setPublishStatus(message = '') {
@@ -82,7 +91,6 @@
   }
 
   async function refreshUi(session) {
-    currentSession = session;
     authorized = false;
     publishResult.innerHTML = '';
     setPublishStatus('');
@@ -112,22 +120,63 @@
     }
   }
 
-  async function signIn() {
+  async function handleGoogleCredential(response) {
+    if (signInResetTimer) clearTimeout(signInResetTimer);
+    signInStatus.textContent = 'Signing in…';
+    try {
+      const { data, error } = await sb.auth.signInWithIdToken({
+        provider: 'google',
+        token: response.credential,
+      });
+      if (error) throw error;
+      signInStatus.textContent = '';
+      resetSignInButton();
+      await refreshUi(data.session);
+    } catch (error) {
+      resetSignInButton();
+      signInStatus.textContent = String(error.message || error);
+    }
+  }
+
+  function initializeGoogle() {
+    if (googleInitialized) return true;
+    if (!window.google?.accounts?.id) return false;
+
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+      auto_select: false,
+      use_fedcm_for_prompt: true,
+    });
+    googleInitialized = true;
+    return true;
+  }
+
+  function signIn() {
+    signInStatus.textContent = '';
+    if (!initializeGoogle()) {
+      signInStatus.textContent = 'Google sign-in failed to load. Refresh the page and try again.';
+      return;
+    }
+
     signInButton.disabled = true;
     signInButton.textContent = 'Opening Google…';
-    const { error } = await sb.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: REDIRECT_URL },
+
+    window.google.accounts.id.prompt(notification => {
+      if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
+        resetSignInButton();
+        signInStatus.textContent = 'Google sign-in could not open. Try again or allow Google sign-in prompts in your browser.';
+      }
     });
-    if (error) {
-      signInButton.disabled = false;
-      signInButton.textContent = 'Continue with Google';
-      document.getElementById('signin-status').textContent = error.message;
-    }
+
+    signInResetTimer = setTimeout(() => {
+      resetSignInButton();
+    }, 12000);
   }
 
   async function signOut() {
     await sb.auth.signOut();
+    window.google?.accounts?.id?.disableAutoSelect();
     await refreshUi(null);
   }
 
@@ -231,6 +280,9 @@
   sb.auth.onAuthStateChange((_event, session) => {
     setTimeout(() => refreshUi(session), 0);
   });
+
+  if (document.readyState === 'complete') initializeGoogle();
+  else window.addEventListener('load', initializeGoogle, { once: true });
 
   sb.auth.getSession().then(({ data }) => refreshUi(data.session));
 })();
