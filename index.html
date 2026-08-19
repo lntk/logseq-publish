@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.github.com; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://exwrvgddhucixbudcbqt.supabase.co; base-uri 'none'; form-action 'none'" />
   <title>Publish Markdown</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -13,37 +13,50 @@
     <header class="home-header">
       <div class="home-brand">logseq</div>
       <h1>Publish Markdown</h1>
-      <p>Drop a <code>.md</code> file to create a new shareable page.</p>
+      <p>Create an unlisted public page from a Markdown file.</p>
     </header>
 
-    <section id="publisher" class="publish-panel" hidden aria-label="Publish Markdown">
-      <div id="publisher-ready" hidden>
-        <button class="upload-target" id="choose-file" type="button">
-          <span class="upload-title">Choose a Markdown file</span>
-          <span class="upload-hint">or drop it anywhere on this page</span>
-        </button>
-        <input id="file-input" type="file" accept=".md,text/markdown,text/plain" hidden />
+    <section id="signed-out" class="auth-state" hidden>
+      <button id="google-signin" class="google-button" type="button">Continue with Google</button>
+      <p class="auth-note">Publishing is available only to approved accounts.</p>
+      <div id="signin-status" class="small" aria-live="polite"></div>
+    </section>
 
-        <div class="publish-toolbar">
-          <span>Each upload gets a new link</span>
-          <button class="text-button" id="publisher-settings" type="button" hidden>GitHub settings</button>
+    <section id="denied" class="auth-state" hidden>
+      <div class="state-title">No publishing access</div>
+      <p id="denied-message"><span id="denied-email"></span> is signed in, but this account is not on the uploader list.</p>
+      <button id="denied-signout" class="secondary-button" type="button">Sign out</button>
+    </section>
+
+    <section id="workspace" hidden>
+      <div class="account-row">
+        <div class="account-identity">
+          <span id="account-email"></span>
+          <span id="account-role" class="role-badge"></span>
         </div>
-        <div id="publish-status" aria-live="polite"></div>
-        <div id="publish-result"></div>
+        <button id="signout" class="text-button" type="button">Sign out</button>
       </div>
 
-      <div id="publisher-setup" class="setup-panel" hidden>
-        <div class="setup-heading">Connect GitHub</div>
-        <p>One-time setup for this browser. Create a fine-grained token restricted to this repository with <strong>Contents: read and write</strong>.</p>
-        <a class="setup-link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create fine-grained token ↗</a>
-        <label for="token-input">Token</label>
-        <input id="token-input" type="password" autocomplete="off" placeholder="github_pat_…" />
-        <div class="setup-actions">
-          <button class="primary" id="save-token" type="button">Connect</button>
-          <button id="cancel-setup" type="button">Cancel</button>
+      <button class="upload-target" id="choose-file" type="button">
+        <span class="upload-title">Choose a Markdown file</span>
+        <span class="upload-hint">or drop it anywhere on this page</span>
+      </button>
+      <input id="file-input" type="file" accept=".md,text/markdown,text/plain" hidden />
+
+      <div class="publish-toolbar">Each upload gets a new unlisted link.</div>
+      <div id="publish-status" aria-live="polite"></div>
+      <div id="publish-result"></div>
+
+      <section id="access-panel" class="access-panel" hidden>
+        <div class="section-heading">Access</div>
+        <p>Add an email to let that Google account publish. Revoking access does not remove pages already published.</p>
+        <div class="access-form">
+          <input id="access-email" type="email" autocomplete="email" placeholder="name@example.com" aria-label="Uploader email" />
+          <button id="grant-access" type="button">Grant</button>
+          <button id="revoke-access" class="quiet-danger" type="button">Revoke</button>
         </div>
-        <div id="setup-status" class="small" aria-live="polite"></div>
-      </div>
+        <div id="access-status" class="small" aria-live="polite"></div>
+      </section>
     </section>
 
     <footer class="home-footer">Previous links remain unchanged when you publish again.</footer>
@@ -56,6 +69,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="home.js"></script>
 </body>
 </html>
