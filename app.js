@@ -24,6 +24,15 @@
 
   const params = new URLSearchParams(location.search);
   const editRequested = params.get('edit') === '1';
+  let pendingFile = null;
+
+  if (window.marked && window.markedKatex) {
+    marked.use(markedKatex({
+      throwOnError: false,
+      nonStandard: true,
+      strict: false
+    }));
+  }
 
   function getToken() {
     return localStorage.getItem(TOKEN_KEY) || '';
@@ -44,7 +53,9 @@
       .replace(/^([ \t]*)- DOING /gm, '$1- [ ] ')
       .replace(/^([ \t]*)- NOW /gm, '$1- [ ] ')
       .replace(/^([ \t]*)- LATER /gm, '$1- [ ] ')
-      .replace(/^([ \t]*)- DONE /gm, '$1- [x] ');
+      .replace(/^([ \t]*)- DONE /gm, '$1- [x] ')
+      .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body) => `\n$$\n${body}\n$$\n`)
+      .replace(/\\\(([\s\S]*?)\\\)/g, (_m, body) => `$${body}$`);
   }
 
   function currentSlug() {
@@ -55,31 +66,20 @@
     return /^[a-f0-9]{32}$/.test(path) ? path : '';
   }
 
-  async function waitForKatex() {
-    for (let i = 0; i < 80; i += 1) {
-      if (window.renderMathInElement) return true;
-      await new Promise(resolve => setTimeout(resolve, 25));
-    }
-    return false;
+  function isRootPage() {
+    return location.pathname === BASE || location.pathname === BASE.slice(0, -1);
   }
 
   async function renderMarkdown(raw) {
     const markdown = normalizeLogseq(raw);
-    const rendered = marked.parse(markdown, { gfm: true, breaks: false });
-    target.innerHTML = DOMPurify.sanitize(rendered);
+    if (!window.marked) throw new Error('Markdown renderer failed to load.');
+    if (!window.markedKatex) throw new Error('LaTeX renderer failed to load.');
 
-    if (await waitForKatex()) {
-      renderMathInElement(target, {
-        delimiters: [
-          { left: '$$', right: '$$', display: true },
-          { left: '\\[', right: '\\]', display: true },
-          { left: '\\(', right: '\\)', display: false },
-          { left: '$', right: '$', display: false }
-        ],
-        throwOnError: false,
-        strict: false
-      });
-    }
+    const rendered = marked.parse(markdown, { gfm: true, breaks: false });
+    target.innerHTML = DOMPurify.sanitize(rendered, {
+      ADD_ATTR: ['aria-hidden'],
+      USE_PROFILES: { html: true, mathMl: true, svg: true }
+    });
 
     const firstHeading = raw.match(/^#\s+(.+)$/m);
     if (firstHeading) document.title = firstHeading[1].replace(/[*_`]/g, '').trim();
@@ -87,11 +87,10 @@
 
   async function loadPage() {
     const slug = currentSlug();
-    const atRoot = location.pathname === BASE || location.pathname === BASE.slice(0, -1) || !location.pathname.startsWith(BASE);
     let source;
 
     if (slug) source = `${BASE}published/${slug}.md`;
-    else if (atRoot) source = `${BASE}page.md`;
+    else if (isRootPage()) source = `${BASE}page.md`;
     else {
       target.innerHTML = '<div class="error"><strong>Page not found.</strong></div>';
       return;
@@ -110,10 +109,11 @@
     return value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   }
 
-  function showReady() {
+  function showReady(message = 'Drop a Markdown file anywhere on this page.') {
     publisher.hidden = false;
     readyPanel.hidden = false;
     setupPanel.hidden = true;
+    publishStatus.textContent = message;
   }
 
   function showSetup(message = '') {
@@ -126,9 +126,12 @@
   }
 
   function configurePublisherUi() {
+    if (!isRootPage() && !editRequested) {
+      publisher.hidden = true;
+      return;
+    }
     if (getToken()) showReady();
-    else if (editRequested) showSetup();
-    else publisher.hidden = true;
+    else showSetup('First publish only: add your repository-scoped token, then future drops are automatic.');
   }
 
   async function verifyToken(token) {
@@ -203,19 +206,20 @@
   }
 
   async function publishFile(file) {
-    if (!file || (!file.name.toLowerCase().endsWith('.md') && file.type && file.type !== 'text/markdown' && file.type !== 'text/plain')) {
-      publishStatus.textContent = 'Please drop a Markdown (.md) file.';
+    if (!file || !file.name.toLowerCase().endsWith('.md')) {
+      showReady('Please drop a Markdown (.md) file.');
       return;
     }
 
     const token = getToken();
     if (!token) {
-      showSetup('Add your GitHub token first.');
+      pendingFile = file;
+      showSetup(`Ready to publish ${file.name}. Add the token once, then this file will publish automatically.`);
       return;
     }
 
     publishResult.innerHTML = '';
-    publishStatus.textContent = `Reading ${file.name}…`;
+    showReady(`Reading ${file.name}…`);
     const markdown = await file.text();
     const shell = await getShell();
 
@@ -251,7 +255,9 @@
         if (error.code === 'PATH_COLLISION') continue;
         if (/401|403/.test(String(error.message))) {
           clearToken();
+          pendingFile = file;
           showSetup('Token expired or lacks Contents: read and write permission.');
+          return;
         }
         publishStatus.textContent = String(error.message || error);
         return;
@@ -268,8 +274,10 @@
     try {
       await verifyToken(token);
       setToken(token);
-      setupStatus.textContent = '';
+      const file = pendingFile;
+      pendingFile = null;
       showReady();
+      if (file) await publishFile(file);
     } catch (error) {
       setupStatus.textContent = String(error.message || error);
     } finally {
@@ -291,8 +299,9 @@
   let dragDepth = 0;
   window.addEventListener('dragenter', event => {
     event.preventDefault();
+    if (!isRootPage() && !editRequested) return;
     dragDepth += 1;
-    if (getToken()) dropOverlay.hidden = false;
+    dropOverlay.hidden = false;
   });
   window.addEventListener('dragover', event => event.preventDefault());
   window.addEventListener('dragleave', event => {
@@ -304,11 +313,8 @@
     event.preventDefault();
     dragDepth = 0;
     dropOverlay.hidden = true;
+    if (!isRootPage() && !editRequested) return;
     const file = event.dataTransfer?.files?.[0];
-    if (!getToken()) {
-      if (editRequested) showSetup('Add your GitHub token first.');
-      return;
-    }
     if (file) publishFile(file);
   });
 
