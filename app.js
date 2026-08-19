@@ -1,48 +1,13 @@
 (() => {
   'use strict';
 
-  const OWNER = 'lntk';
   const pathParts = location.pathname.split('/').filter(Boolean);
   const REPO = pathParts[0] || 'logseq';
-  const BRANCH = 'main';
   const BASE = `/${REPO}/`;
-  const TOKEN_KEY = `logseq-publish-token-${OWNER}-${REPO}-v3`;
-  const HISTORY_KEY = `logseq-publish-history-${OWNER}-${REPO}-v3`;
-
   const target = document.getElementById('content');
-  const publisher = document.getElementById('publisher');
-  const readyPanel = document.getElementById('publisher-ready');
-  const setupPanel = document.getElementById('publisher-setup');
-  const tokenInput = document.getElementById('token-input');
-  const saveTokenButton = document.getElementById('save-token');
-  const cancelSetupButton = document.getElementById('cancel-setup');
-  const setupStatus = document.getElementById('setup-status');
-  const chooseFileButton = document.getElementById('choose-file');
-  const settingsButton = document.getElementById('publisher-settings');
-  const fileInput = document.getElementById('file-input');
-  const publishStatus = document.getElementById('publish-status');
-  const publishResult = document.getElementById('publish-result');
-  const dropOverlay = document.getElementById('drop-overlay');
-
-  const params = new URLSearchParams(location.search);
-  const editRequested = params.get('edit') === '1';
-  let pendingFile = null;
 
   if (window.marked && window.markedKatex) {
     marked.use(markedKatex({ throwOnError: false, nonStandard: true, strict: false }));
-  }
-
-  function getToken() {
-    return localStorage.getItem(TOKEN_KEY) || localStorage.getItem('logseq-publish-token-v2') || '';
-  }
-
-  function setToken(token) {
-    localStorage.setItem(TOKEN_KEY, token.trim());
-  }
-
-  function clearToken() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem('logseq-publish-token-v2');
   }
 
   function normalizeLogseq(markdown) {
@@ -65,17 +30,19 @@
     return /^[a-f0-9]{32}$/.test(path) ? path : '';
   }
 
-  function isRootPage() {
-    return location.pathname === BASE || location.pathname === BASE.slice(0, -1);
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
   }
 
   async function renderMarkdown(raw) {
     if (!target) return;
-    const markdown = normalizeLogseq(raw);
     if (!window.marked) throw new Error('Markdown renderer failed to load.');
     if (!window.markedKatex) throw new Error('LaTeX renderer failed to load.');
+    if (!window.DOMPurify) throw new Error('HTML sanitizer failed to load.');
 
-    const rendered = marked.parse(markdown, { gfm: true, breaks: false });
+    const rendered = marked.parse(normalizeLogseq(raw), { gfm: true, breaks: false });
     target.innerHTML = DOMPurify.sanitize(rendered, {
       ADD_ATTR: ['aria-hidden'],
       ADD_TAGS: ['annotation']
@@ -86,7 +53,6 @@
   }
 
   async function loadPage() {
-    if (isRootPage()) return;
     const slug = currentSlug();
     if (!slug || !target) {
       if (target) target.innerHTML = '<div class="error"><strong>Page not found.</strong></div>';
@@ -102,214 +68,5 @@
     }
   }
 
-  function escapeHtml(value) {
-    return value.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-  }
-
-  function showReady() {
-    if (!publisher || !readyPanel || !setupPanel) return;
-    publisher.hidden = false;
-    readyPanel.hidden = false;
-    setupPanel.hidden = true;
-    if (settingsButton) settingsButton.hidden = !getToken();
-  }
-
-  function showSetup(message = '') {
-    if (!publisher || !readyPanel || !setupPanel) return;
-    publisher.hidden = false;
-    readyPanel.hidden = true;
-    setupPanel.hidden = false;
-    if (setupStatus) setupStatus.textContent = message;
-    if (tokenInput) {
-      tokenInput.value = '';
-      setTimeout(() => tokenInput.focus(), 0);
-    }
-  }
-
-  function configurePublisherUi() {
-    if (!isRootPage() || !publisher) {
-      if (publisher) publisher.hidden = true;
-      return;
-    }
-    if (editRequested && !getToken()) showSetup();
-    else showReady();
-  }
-
-  async function verifyToken(token) {
-    const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'X-GitHub-Api-Version': '2022-11-28'
-      }
-    });
-    if (!response.ok) throw new Error(`GitHub rejected the token (${response.status})`);
-  }
-
-  function utf8ToBase64(text) {
-    const bytes = new TextEncoder().encode(text);
-    let binary = '';
-    const chunk = 0x8000;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
-  }
-
-  async function githubCreateFile(path, content, message, token) {
-    const response = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`, {
-      method: 'PUT',
-      headers: {
-        Accept: 'application/vnd.github+json',
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28'
-      },
-      body: JSON.stringify({ message, content: utf8ToBase64(content), branch: BRANCH })
-    });
-
-    if (response.status === 422) {
-      const error = new Error('path-collision');
-      error.code = 'PATH_COLLISION';
-      throw error;
-    }
-    if (!response.ok) {
-      let detail = '';
-      try { detail = (await response.json()).message || ''; } catch (_) {}
-      throw new Error(`GitHub upload failed (${response.status})${detail ? `: ${detail}` : ''}`);
-    }
-    return response.json();
-  }
-
-  function randomId() {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  async function getShell() {
-    const response = await fetch(`${BASE}shell.html?v=${Date.now()}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error('Could not load publisher shell');
-    return response.text();
-  }
-
-  function saveHistory(item) {
-    let history = [];
-    try { history = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (_) {}
-    history.unshift(item);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50)));
-  }
-
-  async function publishFile(file) {
-    if (!file || !file.name.toLowerCase().endsWith('.md')) {
-      if (publishStatus) publishStatus.textContent = 'Choose a Markdown (.md) file.';
-      return;
-    }
-
-    const token = getToken();
-    if (!token) {
-      pendingFile = file;
-      showSetup(`Ready to publish ${file.name}. Connect GitHub once to continue.`);
-      return;
-    }
-
-    if (publishResult) publishResult.innerHTML = '';
-    if (publishStatus) publishStatus.textContent = `Reading ${file.name}…`;
-    const markdown = await file.text();
-    const shell = await getShell();
-
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const id = randomId();
-      try {
-        if (publishStatus) publishStatus.textContent = 'Publishing…';
-        await githubCreateFile(`published/${id}.md`, markdown, `Publish ${file.name} as ${id}`, token);
-        await githubCreateFile(`${id}/index.html`, shell, `Add published route ${id}`, token);
-
-        const url = `${location.origin}${BASE}${id}/`;
-        saveHistory({ id, name: file.name, url, createdAt: new Date().toISOString() });
-        if (publishStatus) publishStatus.textContent = 'Published. The new page may take a few seconds to become available.';
-        if (publishResult) {
-          publishResult.innerHTML = `<div class="result-label">Share link</div><div class="result-row"><a id="new-link" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a><button id="copy-link" type="button">Copy link</button></div>`;
-          document.getElementById('copy-link')?.addEventListener('click', async () => {
-            await navigator.clipboard.writeText(url);
-            document.getElementById('copy-link').textContent = 'Copied';
-          });
-        }
-        return;
-      } catch (error) {
-        if (error.code === 'PATH_COLLISION') continue;
-        if (/401|403/.test(String(error.message))) {
-          clearToken();
-          showSetup('Token expired or lacks Contents: read and write permission.');
-        }
-        if (publishStatus) publishStatus.textContent = String(error.message || error);
-        return;
-      }
-    }
-    if (publishStatus) publishStatus.textContent = 'Could not generate a unique page ID; try again.';
-  }
-
-  if (isRootPage()) {
-    saveTokenButton?.addEventListener('click', async () => {
-      const token = tokenInput?.value.trim() || '';
-      if (!token) return;
-      saveTokenButton.disabled = true;
-      if (setupStatus) setupStatus.textContent = 'Checking token…';
-      try {
-        await verifyToken(token);
-        setToken(token);
-        if (setupStatus) setupStatus.textContent = '';
-        showReady();
-        if (pendingFile) {
-          const file = pendingFile;
-          pendingFile = null;
-          await publishFile(file);
-        }
-      } catch (error) {
-        if (setupStatus) setupStatus.textContent = String(error.message || error);
-      } finally {
-        saveTokenButton.disabled = false;
-      }
-    });
-
-    cancelSetupButton?.addEventListener('click', () => {
-      pendingFile = null;
-      if (setupStatus) setupStatus.textContent = '';
-      showReady();
-    });
-
-    settingsButton?.addEventListener('click', () => {
-      clearToken();
-      showSetup('Token removed from this browser. Paste a token to connect again.');
-    });
-
-    chooseFileButton?.addEventListener('click', () => fileInput?.click());
-    fileInput?.addEventListener('change', () => {
-      if (fileInput.files?.[0]) publishFile(fileInput.files[0]);
-      fileInput.value = '';
-    });
-
-    let dragDepth = 0;
-    window.addEventListener('dragenter', event => {
-      event.preventDefault();
-      dragDepth += 1;
-      if (dropOverlay) dropOverlay.hidden = false;
-    });
-    window.addEventListener('dragover', event => event.preventDefault());
-    window.addEventListener('dragleave', event => {
-      event.preventDefault();
-      dragDepth = Math.max(0, dragDepth - 1);
-      if (dragDepth === 0 && dropOverlay) dropOverlay.hidden = true;
-    });
-    window.addEventListener('drop', event => {
-      event.preventDefault();
-      dragDepth = 0;
-      if (dropOverlay) dropOverlay.hidden = true;
-      const file = event.dataTransfer?.files?.[0];
-      if (file) publishFile(file);
-    });
-  }
-
-  configurePublisherUi();
   loadPage();
 })();
