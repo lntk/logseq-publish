@@ -36,7 +36,7 @@
   const accessStatus = document.getElementById('access-status');
 
   let authorized = false;
-  let googleInitialized = false;
+  let pendingNonce = null;
   let signInResetTimer = null;
 
   function showOnly(element) {
@@ -64,6 +64,17 @@
     return String(value).replace(/[&<>"']/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]));
+  }
+
+  async function makeNoncePair() {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const raw = btoa(String.fromCharCode(...bytes));
+    const encoded = new TextEncoder().encode(raw);
+    const digest = await crypto.subtle.digest('SHA-256', encoded);
+    const hashed = Array.from(new Uint8Array(digest))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    return { raw, hashed };
   }
 
   async function api(body) {
@@ -123,12 +134,20 @@
   async function handleGoogleCredential(response) {
     if (signInResetTimer) clearTimeout(signInResetTimer);
     signInStatus.textContent = 'Signing in…';
+
+    const nonce = pendingNonce;
+    pendingNonce = null;
+
     try {
+      if (!nonce) throw new Error('Google sign-in nonce was lost. Please try again.');
+
       const { data, error } = await sb.auth.signInWithIdToken({
         provider: 'google',
         token: response.credential,
+        nonce,
       });
       if (error) throw error;
+
       signInStatus.textContent = '';
       resetSignInButton();
       await refreshUi(data.session);
@@ -138,23 +157,10 @@
     }
   }
 
-  function initializeGoogle() {
-    if (googleInitialized) return true;
-    if (!window.google?.accounts?.id) return false;
-
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleGoogleCredential,
-      auto_select: false,
-      use_fedcm_for_prompt: true,
-    });
-    googleInitialized = true;
-    return true;
-  }
-
-  function signIn() {
+  async function signIn() {
     signInStatus.textContent = '';
-    if (!initializeGoogle()) {
+
+    if (!window.google?.accounts?.id) {
       signInStatus.textContent = 'Google sign-in failed to load. Refresh the page and try again.';
       return;
     }
@@ -162,16 +168,34 @@
     signInButton.disabled = true;
     signInButton.textContent = 'Opening Google…';
 
-    window.google.accounts.id.prompt(notification => {
-      if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
-        resetSignInButton();
-        signInStatus.textContent = 'Google sign-in could not open. Try again or allow Google sign-in prompts in your browser.';
-      }
-    });
+    try {
+      const { raw, hashed } = await makeNoncePair();
+      pendingNonce = raw;
 
-    signInResetTimer = setTimeout(() => {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+        nonce: hashed,
+        auto_select: false,
+      });
+
+      window.google.accounts.id.prompt(notification => {
+        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
+          pendingNonce = null;
+          resetSignInButton();
+          signInStatus.textContent = 'Google sign-in could not open. Try again or allow Google sign-in prompts in your browser.';
+        }
+      });
+
+      signInResetTimer = setTimeout(() => {
+        pendingNonce = null;
+        resetSignInButton();
+      }, 12000);
+    } catch (error) {
+      pendingNonce = null;
       resetSignInButton();
-    }, 12000);
+      signInStatus.textContent = String(error.message || error);
+    }
   }
 
   async function signOut() {
@@ -280,9 +304,6 @@
   sb.auth.onAuthStateChange((_event, session) => {
     setTimeout(() => refreshUi(session), 0);
   });
-
-  if (document.readyState === 'complete') initializeGoogle();
-  else window.addEventListener('load', initializeGoogle, { once: true });
 
   sb.auth.getSession().then(({ data }) => refreshUi(data.session));
 })();
